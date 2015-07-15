@@ -1,12 +1,16 @@
 ApplePayStubs
 ===
 
+First, some big news!
+---
+This library exists because as of iOS8 it was impossible to display a `PKPaymentAuthorizationViewController` (a.k.a. an Apple Pay payment sheet) in the iOS simulator. Fortunately, this is no longer necessary - as of iOS 9, Apple Pay works in the simulator, and returns dummy test cards. In other words, ApplePayStubs has been [sherlocked](http://www.urbandictionary.com/define.php?term=sherlocked)! As such, consider this library deprecated as of iOS 9. If you're interested in using it until the iOS 9 / Xcode 7 release, though, read on!
+
 What is this?
 ---
 
-ApplePay is awesome, and like many developers we're excited to work with it. However, since Apple hasn't yet released any public versions of the iOS SDK with it enabled, we want to make it easier for developers to plan and test their Apple Pay integrations.
+ApplePay is awesome. However, since it isn't available in every country yet, and only then on the newest iOS devices, we want to make it easier for developers to plan and test their Apple Pay integrations.
 
-We've created a replacement component for `PKPaymentAuthorizationViewController` (the primary class involved in ApplePay transactions) for businesses interested in working with ApplePay called `STPTestPaymentAuthorizationViewController`. These classes appear visually similar and behave almost identically. The primary difference is that `STPTestPaymentAuthorizationViewController` yields test credit cards and addresses instead of accessing actual information stored on a user's iPhone. You can use it to build and test all of your UI and application logic around ApplePay, and switch it out for the real thing once ApplePay is publicly released.
+We've created a replacement component for `PKPaymentAuthorizationViewController` (the primary class involved in ApplePay transactions) for businesses interested in working with ApplePay called `STPTestPaymentAuthorizationViewController`. These classes appear visually similar and behave almost identically. The primary difference is that `STPTestPaymentAuthorizationViewController` yields test credit cards and addresses instead of accessing actual information stored on a user's iPhone. You can use it to build and test all of your UI and application logic around ApplePay, and switch it out for the real thing once you have access to a proper testing device.
 
 Please note that this is for **testing and development purposes only**.
 
@@ -38,7 +42,7 @@ You create and use instances of `STPTestPaymentAuthorizationViewController` exac
 #else
     controller = [[PKPaymentAuthorizationViewController alloc] initWithPaymentRequest:request];
     controller.delegate = self;
-#endif
+
     [self presentViewController:controller];
 }
 ```
@@ -70,37 +74,30 @@ You create and use instances of `STPTestPaymentAuthorizationViewController` exac
 ```
 
 When the user finishes selecting a card, as usual `STPTestPaymentAuthorizationViewController` will call `paymentAuthorizationViewController:didAuthorizePayment:completion` on its delegate.
- This usually includes a `PKPayment` that contains encrypted credit card data that you'd pass off to your payment processor (such as Stripe). To approximate this functionality, we attach a credit card number to the `PKPayment` under the `stp_testCardNumber` property. If you're using Stripe to handle this token, you can use our existing card APIs to turn this into a token:
+ This delegate method includes a `PKPayment` object, which itself has an instance of `PKPaymentToken` that contains encrypted credit card data that you'd pass off to your payment processor (such as Stripe). While the `PKPayment` and `PKPaymentToken` returned by ApplePayStubs have stubbed (and invalid) versions of this data, the Stripe API will be able to recognize them in testmode. As such, you shouldn't have to modify your existing `PKPaymentAuthorizationViewControllerDelegate` methods:
 
 ```objc
 - (void)paymentAuthorizationViewController:(PKPaymentAuthorizationViewController *)controller
                        didAuthorizePayment:(PKPayment *)payment
                                 completion:(void (^)(PKPaymentAuthorizationStatus))completion {
-    void(^tokenBlock)(STPToken *token, NSError *error) = ^void(STPToken *token, NSError *error) {
-        if (error) {
-            completion(PKPaymentAuthorizationStatusFailure);
-        }
-        else {
-            [self createBackendChargeWithToken:token completion:completion];
-        }
-    };
-#if DEBUG
-    STPCard *card = [STPCard new];
-    card.number = payment.stp_testCardNumber;
-    card.expMonth = 12;
-    card.expYear = 2020;
-    card.cvc = @"123";
-    [Stripe createTokenWithCard:card completion:tokenBlock];
-#else
-    [Stripe createTokenWithPayment:payment
-                    operationQueue:[NSOperationQueue mainQueue]
-                        completion:tokenBlock];
-#endif
+                                
+    [[STPAPIClient sharedClient] createTokenWithPayment:payment
+        completion:^(STPToken *token, NSError *error) {
+            [self createBackendChargeWithToken:token
+                                    completion:^(STPBackendChargeResult status, NSError *error) {
+                if (status == STPBackendChargeResultSuccess) {
+                    completion(PKPaymentAuthorizationStatusSuccess);
+                } else {
+                    completion(PKPaymentAuthorizationStatusFailure);
+                }
+        }];
+    }];
 }
-
 ```
 
-(Note for the above example: Stripe tokens created from Apple Pay work interchangably with those created using manually-collected credit card details).
+(Note: Stripe tokens created from Apple Pay work interchangeably with those created using manually-collected credit card details).
+
+If you're not using Stripe, you can find the selected card information on the `PKPayment`'s `PKPaymentToken` in the `transactionIdentifier` field, in the format `"ApplePayStubs~{card_number}~{amount_in_cents}~{currency}~{uuid}"`.
 
 Example App / Learn More
 ---

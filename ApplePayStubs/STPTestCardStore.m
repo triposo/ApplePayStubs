@@ -6,9 +6,12 @@
 //  Copyright (c) 2014 Stripe. All rights reserved.
 //
 
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 80000
+
 
 #import "STPTestCardStore.h"
+
+NSString *const STPSuccessfulChargeCardNumber = @"4242424242424242";
+NSString *const STPFailingChargeCardNumber =    @"4000000000000002";
 
 @interface STPTestCardStore ()
 @property (nonatomic) NSArray *allItems;
@@ -21,8 +24,8 @@
 + (NSDictionary *)defaultCard {
     NSMutableDictionary *card = [NSMutableDictionary new];
     card[@"name"] = @"Stripe Test Card";
-    card[@"number"] = @"4242424242424242";
-    card[@"last4"] = [card[@"number"] substringFromIndex:12];
+    card[@"number"] = STPSuccessfulChargeCardNumber;
+    card[@"last4"] = [STPSuccessfulChargeCardNumber substringFromIndex:STPSuccessfulChargeCardNumber.length-4];
     card[@"expMonth"] = @12;
     card[@"expYear"] = @2030;
     card[@"cvc"] = @"123";
@@ -32,8 +35,8 @@
 + (NSDictionary *)defaultFailingCard {
     NSMutableDictionary *card = [NSMutableDictionary new];
     card[@"name"] = @"Stripe Test Card";
-    card[@"number"] = @"4000000000000002";
-    card[@"last4"] = [card[@"number"] substringFromIndex:12];
+    card[@"number"] = STPFailingChargeCardNumber;
+    card[@"last4"] = [STPFailingChargeCardNumber substringFromIndex:STPSuccessfulChargeCardNumber.length-4];
     card[@"expMonth"] = @12;
     card[@"expYear"] = @2030;
     card[@"cvc"] = @"123";
@@ -58,4 +61,3 @@
 
 @end
 
-#endif

@@ -6,14 +6,11 @@
 //  Copyright (c) 2014 Stripe. All rights reserved.
 //
 
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 80000
-
 #import "STPTestPaymentSummaryViewController.h"
 #import "STPTestDataTableViewController.h"
 #import "STPTestCardStore.h"
 #import "STPTestAddressStore.h"
 #import "STPTestShippingMethodStore.h"
-#import "PKPayment+STPTestKeys.h"
 
 NSString *const STPTestPaymentAuthorizationSummaryItemIdentifier = @"STPTestPaymentAuthorizationSummaryItemIdentifier";
 NSString *const STPTestPaymentAuthorizationTestDataIdentifier = @"STPTestPaymentAuthorizationTestDataIdentifier";
@@ -46,7 +43,8 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
 @implementation STPTestPaymentSummaryViewController
 
 - (instancetype)initWithPaymentRequest:(PKPaymentRequest *)paymentRequest {
-    self = [self initWithNibName:nil bundle:nil];
+    NSBundle *bundle = [NSBundle bundleForClass:[self class]];
+    self = [self initWithNibName:nil bundle:bundle];
     if (self) {
         _paymentRequest = paymentRequest;
         _summaryItems = paymentRequest.paymentSummaryItems;
@@ -55,7 +53,7 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
         _shippingAddressStore = [STPTestAddressStore new];
         _shippingMethodStore = [[STPTestShippingMethodStore alloc] initWithShippingMethods:paymentRequest.shippingMethods];
         self.navigationItem.rightBarButtonItem =
-            [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(cancel:)];
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemCancel target:self action:@selector(cancel:)];
     }
     return self;
 }
@@ -81,7 +79,8 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
     [self updateSectionTitles];
     [self.tableView registerClass:[STPTestPaymentSummaryItemCell class] forCellReuseIdentifier:STPTestPaymentAuthorizationSummaryItemIdentifier];
     [self.tableView registerClass:[STPTestPaymentDataCell class] forCellReuseIdentifier:STPTestPaymentAuthorizationTestDataIdentifier];
-    if (self.paymentRequest.requiredShippingAddressFields != PKAddressFieldNone) {
+    // Real Apple Pay sheet only calls delegate when postal address is in requiredShippingAddressFields
+    if (self.paymentRequest.requiredShippingAddressFields & PKAddressFieldPostalAddress) {
         [self didSelectShippingAddress];
     }
 }
@@ -94,14 +93,37 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
 - (IBAction)makePayment:(id)sender {
     self.payButton.hidden = YES;
     [self.activityIndicator startAnimating];
-
+    
     PKPayment *payment = [PKPayment new];
     NSDictionary *card = self.cardStore.selectedItem;
-
-    payment.stp_testCardNumber = card[@"number"];
-
+    
+    PKPaymentToken *token = [PKPaymentToken new];
+    
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
+    
+    if ([token respondsToSelector:@selector(setTransactionIdentifier:)]) {
+        NSString *uuid = [[NSUUID UUID] UUIDString];
+        uuid = [uuid stringByReplacingOccurrencesOfString:@"~" withString:@"" options:0 range:NSMakeRange(0, uuid.length)];
+        NSString *number = card[@"number"];
+        PKPaymentSummaryItem *lastSummaryItem = [self.summaryItems lastObject];
+        NSDecimalNumber *amount = lastSummaryItem.amount;
+        NSString *cents = [@([[amount decimalNumberByMultiplyingByPowerOf10:2] integerValue]) stringValue];
+        NSString *currency = self.paymentRequest.currencyCode;
+        NSString *identifier = [@[@"ApplePayStubs", number, cents, currency, uuid] componentsJoinedByString:@"~"];
+        
+        [token performSelector:@selector(setTransactionIdentifier:) withObject:identifier];
+    }
+    
+    if ([payment respondsToSelector:@selector(setToken:)]) {
+        [payment performSelector:@selector(setToken:) withObject:token];
+    }
+    
+    
+    if ([payment respondsToSelector:@selector(setShippingMethod:)] && self.shippingMethodStore.selectedItem) {
+        [payment performSelector:@selector(setShippingMethod:) withObject:self.shippingMethodStore.selectedItem];
+    }
+    
     if ([payment respondsToSelector:@selector(setShippingMethod:)] && self.shippingMethodStore.selectedItem) {
         [payment performSelector:@selector(setShippingMethod:) withObject:self.shippingMethodStore.selectedItem];
     }
@@ -114,9 +136,9 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
         [payment performSelector:@selector(setBillingAddress:) withObject:(__bridge id)(billingRecord)];
     }
 #pragma clang diagnostic pop
-
+    
     PKPaymentAuthorizationViewController *auth = (PKPaymentAuthorizationViewController *)self;
-
+    
     [self.activityIndicator startAnimating];
     [self.delegate paymentAuthorizationViewController:(PKPaymentAuthorizationViewController *)auth
                                   didAuthorizePayment:payment
@@ -151,7 +173,7 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     NSString *title = self.sectionTitles[indexPath.section];
     NSString *identifier = [title isEqualToString:STPTestPaymentSectionTitlePayment] ? STPTestPaymentAuthorizationTestDataIdentifier :
-                                                                                       STPTestPaymentAuthorizationSummaryItemIdentifier;
+    STPTestPaymentAuthorizationSummaryItemIdentifier;
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier forIndexPath:indexPath];
     [self configureCell:cell forRowAtIndexPath:indexPath];
     return cell;
@@ -170,14 +192,14 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
             text = [@"PAY " stringByAppendingString:text];
         }
         cell.textLabel.text = text;
-
+        
         cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ %@", item.amount.stringValue, self.paymentRequest.currencyCode];
         return;
     }
-
+    
     id<STPTestDataStore> store = [self storeForSection:title];
     NSArray *descriptions = [store descriptionsForItem:store.selectedItem];
-
+    
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     cell.textLabel.text = descriptions[0];
     cell.detailTextLabel.text = descriptions[1];
@@ -243,7 +265,12 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
     id<STPTestDataStore> store = [self storeForSection:self.sectionTitles[indexPath.section]];
     STPTestDataTableViewController *controller = [[STPTestDataTableViewController alloc] initWithStore:store];
     if (store == self.shippingAddressStore) {
-        controller.callback = ^void(id item) { [self didSelectShippingAddress]; };
+        controller.callback = ^void(id item) {
+            // Real Apple Pay sheet only calls delegate when postal address is in requiredShippingAddressFields
+            if (self.paymentRequest.requiredShippingAddressFields & PKAddressFieldPostalAddress) {
+                [self didSelectShippingAddress];
+            }
+        };
     }
     if (store == self.shippingMethodStore) {
         controller.callback = ^void(id item) {
@@ -296,4 +323,4 @@ NSString *const STPTestPaymentSectionTitlePayment = @"Payment";
 }
 @end
 
-#endif
+
