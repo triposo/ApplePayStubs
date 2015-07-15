@@ -23,7 +23,7 @@
         self.allItems = @[
             @{
                 @"name": @"Apple HQ",
-                @"email": @"foo@example.com",
+                @"email": @"apple@example.com",
                 @"line1": @"1 Infinite Loop",
                 @"line2": @"",
                 @"city": @"Cupertino",
@@ -34,7 +34,7 @@
             },
             @{
                 @"name": @"The White House",
-                @"email": @"foo@example.com",
+                @"email": @"whitehouse@example.com",
                 @"line1": @"1600 Pennsylvania Ave NW",
                 @"line2": @"",
                 @"city": @"Washington",
@@ -45,7 +45,7 @@
             },
             @{
                 @"name": @"Buckingham Palace",
-                @"email": @"foo@example.com",
+                @"email": @"buckingham@example.com",
                 @"line1": @"SW1A 1AA",
                 @"line2": @"",
                 @"city": @"London",
